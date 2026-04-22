@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from pandasql import sqldf
 import plotly.express as px
+import re
 
 #Vamos a crar el dataframe con los datos de empleo en Medellín
 df_empleo = pd.read_csv('empleo_medellin.csv', sep=',')
@@ -40,6 +41,56 @@ menores_trabajando = df_menores_trabajando.iloc[0, 0]
 total_trabajando = df_empleo[df_empleo['trabaja'] == 'Sí'].shape[0]
 desempleo_pct = ((total_personas - total_trabajando) / total_personas) * 100
 vivir_bien_count = df_distribucion_vivir_bien[df_distribucion_vivir_bien['categoria'] == 'Vivir bien']['cantidad'].iloc[0] if not df_distribucion_vivir_bien[df_distribucion_vivir_bien['categoria'] == 'Vivir bien'].empty else 0
+
+# Función para respuestas del chatbot
+def get_chatbot_response(message):
+    message = message.lower()
+    if 'menor' in message and 'edad' in message:
+        total_menores = df_empleo[df_empleo['edad'] < 18].shape[0]
+        pct = (menores_trabajando / total_menores) * 100 if total_menores > 0 else 0
+        return f"👶 **Análisis del empleo en menores de edad:**\n\n- Número de menores trabajando: {menores_trabajando}\n- Total menores encuestados: {total_menores}\n- Porcentaje trabajando: {pct:.1f}%\n\nEsto indica que hay menores en el mercado laboral, lo cual puede afectar su educación y desarrollo. 📚"
+    elif 'nivel' in message or 'estudio' in message:
+        response = "🎓 **Análisis del empleo según nivel de estudios:**\n\n**Ingresos promedio:**\n"
+        for _, row in df_ingreso_promedio_nivel_estudio.iterrows():
+            response += f"- {row['nivel_estudio']}: ${row['ingreso_promedio']:.0f}\n"
+        response += "\n**Distribución de trabajadores:**\n"
+        for _, row in df_distribucion_nivel_estudio.iterrows():
+            response += f"- {row['nivel_estudio']}: {row['cantidad']} personas\n"
+        response += "\nLa educación superior generalmente correlaciona con mejores ingresos. 📈"
+        return response
+    elif 'comuna' in message:
+        comuna_match = re.search(r'comuna (\d+)', message)
+        if comuna_match:
+            comuna = int(comuna_match.group(1))
+            if 1 <= comuna <= 16:
+                df_com = df_rangos_edad_por_comuna[df_rangos_edad_por_comuna['comuna'] == comuna]
+                response = f"🏙️ **Análisis de empleo en Comuna {comuna}:**\n\n"
+                if not df_com.empty:
+                    for _, row in df_com.iterrows():
+                        response += f"- Rango {row['rango_edad']}: {row['cantidad']} trabajadores\n"
+                else:
+                    response += "No hay datos disponibles para esta comuna.\n"
+                return response
+            else:
+                return "❌ La comuna debe estar entre 1 y 16."
+        else:
+            response = "🏙️ **Análisis general por comunas:**\n\n"
+            for _, row in df_distribucion_comuna.iterrows():
+                response += f"- Comuna {row['comuna']}: {row['cantidad']} trabajadores\n"
+            response += "\nPara detalles específicos, pregunta por 'comuna X' (ej: comuna 5)."
+            return response
+    elif 'estrato' in message:
+        response = "🏠 **Análisis del empleo por estrato:**\n\n"
+        for _, row in df_distribucion_trabajo_estrato.iterrows():
+            response += f"- Estrato {row['estrato']}: {row['cantidad']} trabajadores\n"
+        response += "\nLos estratos medios muestran mayor participación laboral."
+        return response
+    elif 'resumen' in message or 'desempleo' in message or 'empleo' in message:
+        pct_trabajando = (total_trabajando / total_personas) * 100
+        pct_vivir_bien = (vivir_bien_count / total_personas) * 100
+        return f"📊 **Resumen del empleo en Medellín:**\n\n- Total encuestados: {total_personas}\n- Personas trabajando: {total_trabajando} ({pct_trabajando:.1f}%)\n- Desempleados: {total_personas - total_trabajando} ({desempleo_pct:.1f}%)\n- Menores trabajando: {menores_trabajando}\n- Con sueldo para vivir bien: {vivir_bien_count} ({pct_vivir_bien:.1f}%)\n\nMedellín enfrenta desafíos en desempleo y salarios dignos. 💼"
+    else:
+        return "🤔 No entendí tu pregunta. Prueba con: análisis de menores, nivel de estudios, comunas, estratos o resumen."
 
 # Configuración de la página
 st.set_page_config(page_title="Empleo en Medellín", layout="wide")
@@ -91,6 +142,8 @@ with st.sidebar:
         st.session_state.page = 'Nivel de estudio'
     if st.button("Estrato y comuna"):
         st.session_state.page = 'Estrato y comuna'
+    if st.button("🤖 ChatBot"):
+        st.session_state.page = 'ChatBot'
 
 # Páginas
 if st.session_state.page == 'Inicio':
@@ -149,4 +202,28 @@ elif st.session_state.page == 'Estrato y comuna':
     fig5 = px.pie(df_distribucion_vivir_bien, values='cantidad', names='categoria', title="Sueldos Suficientes para Vivir Bien", color_discrete_sequence=['#FFD700', '#FF6347'])
     st.plotly_chart(fig5)
     st.markdown('<p class="analysis">La mayoría de los ingresos no alcanzan el umbral para una vida digna 😟, reflejando problemas económicos y sociales profundos que requieren intervenciones urgentes. 🚨</p>', unsafe_allow_html=True)
+
+elif st.session_state.page == 'ChatBot':
+    st.title("🤖 ChatBot Analítico")
+    st.write("Pregúntame sobre el empleo en Medellín. Aquí van algunas preguntas sugeridas:")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("👶 Análisis del empleo en menores de edad"):
+            st.session_state.chat_input = "análisis del empleo en menores de edad"
+        if st.button("🎓 Análisis del empleo según nivel de estudios"):
+            st.session_state.chat_input = "análisis del empleo según nivel de estudios"
+    with col2:
+        if st.button("🏙️ Análisis del empleo según comunas"):
+            st.session_state.chat_input = "análisis del empleo según comunas"
+        if st.button("📊 Resumen del empleo en Medellín"):
+            st.session_state.chat_input = "resumen del empleo en Medellín"
+    
+    user_input = st.text_input("Escribe tu pregunta:", key="chat_input", value=st.session_state.get('chat_input', ''))
+    
+    if st.button("Enviar") and user_input:
+        response = get_chatbot_response(user_input)
+        st.write("**Tú:**", user_input)
+        st.write("**🤖 ChatBot:**", response)
+        st.session_state.chat_input = ''  # Limpiar
 
